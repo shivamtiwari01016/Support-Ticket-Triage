@@ -67,6 +67,20 @@ class TicketRepository:
         )
         return self.session.scalar(statement)
 
+    def update_status(self, ticket_id: str, status: str) -> Ticket | None:
+        ticket = self.get_by_ticket_id(ticket_id)
+        if ticket is None:
+            return None
+        ticket.status = status
+        try:
+            self.session.add(ticket)
+            self.session.commit()
+            self.session.refresh(ticket)
+            return ticket
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
+
     def statistics(self) -> dict:
         total_tickets = self.session.scalar(select(func.count(Ticket.id))) or 0
         average_urgency = self.session.scalar(select(func.avg(Prediction.urgency_score)))

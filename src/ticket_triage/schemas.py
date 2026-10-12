@@ -13,6 +13,10 @@ class TicketRequest(BaseModel):
     text: str = Field(min_length=1, max_length=20_000, description="Support ticket text")
 
 
+class TicketStatusUpdateRequest(BaseModel):
+    status: TicketStatus = Field(description="New ticket processing status")
+
+
 class TicketResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,6 +28,8 @@ class TicketResponse(BaseModel):
     urgency: float = Field(ge=0, le=1)
     urgency_level: UrgencyLevel
     created_at: datetime
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    explanation: dict[str, object] | None = None
 
 
 class HealthResponse(BaseModel):

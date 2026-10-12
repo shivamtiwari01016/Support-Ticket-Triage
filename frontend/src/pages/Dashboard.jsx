@@ -38,8 +38,12 @@ export default function Dashboard({ history, historyLoading, historyError }) {
   const averageUrgency = statistics
     ? `${Math.round(statistics.averageUrgency * 100)}%`
     : statisticsLoading ? '—' : '0%'
-  const accuracy = metrics ? `${(metrics.accuracy * 100).toFixed(1)}%` : metricsLoading ? '—' : 'Unavailable'
-  const belowBaseline = metrics && metrics.accuracy < metrics.majority_baseline_accuracy
+  const hasMetrics = Number.isFinite(metrics?.accuracy)
+  const pct = (value) => (Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '—')
+  const accuracy = hasMetrics ? pct(metrics.accuracy) : metricsLoading ? '—' : 'Unavailable'
+  const baseline = metrics?.majority_baseline_accuracy
+  const belowBaseline = hasMetrics && Number.isFinite(baseline) && metrics.accuracy < baseline
+  const delta = hasMetrics && Number.isFinite(baseline) ? metrics.accuracy - baseline : null
 
   return (
     <div className="page dashboard-page">
@@ -59,7 +63,13 @@ export default function Dashboard({ history, historyLoading, historyError }) {
         <StatCard icon={Ticket} label="Total Tickets" value={statistics?.totalTickets ?? (statisticsLoading ? '—' : '0')} detail="Persisted runtime tickets" tone="teal" />
         <StatCard icon={Layers3} label="Categories" value={CATEGORIES.length} detail="Classifier label set" tone="blue" />
         <StatCard icon={Activity} label="Average Urgency" value={averageUrgency} detail={statistics ? 'Across saved predictions' : statisticsLoading ? 'Loading database statistics' : 'No saved predictions'} tone="amber" />
-        <StatCard icon={BarChart3} label="Model Accuracy" value={accuracy} detail={metrics ? `${(metrics.majority_baseline_accuracy * 100).toFixed(1)}% majority baseline` : 'Training evaluation endpoint'} tone="coral" />
+        <StatCard
+          icon={BarChart3}
+          label="Model Accuracy"
+          value={accuracy}
+          detail={hasMetrics ? `F1 ${pct(metrics.f1_score)} · baseline ${pct(baseline)}` : 'Training evaluation endpoint'}
+          tone="coral"
+        />
       </section>
 
       {(statisticsError || metricsError) && (
@@ -71,9 +81,60 @@ export default function Dashboard({ history, historyLoading, historyError }) {
       {belowBaseline && (
         <div className="dashboard-alert" role="note">
           <AlertTriangle size={17} aria-hidden="true" />
-          <p><strong>Evaluation caveat.</strong> The measured text model is below its majority baseline; verify category predictions before routing.</p>
+          <p><strong>Evaluation caveat.</strong> Accuracy is {(Math.abs(delta) * 100).toFixed(1)} points below the {pct(baseline)} majority baseline; verify category predictions before routing.</p>
         </div>
       )}
+
+      <section className="surface-panel metrics-panel" aria-label="Model evaluation metrics">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">HELD-OUT EVALUATION</p>
+            <h2>Model accuracy on the test split</h2>
+          </div>
+          <span className="snapshot-tag">
+            {metrics?.test_rows ? `${metrics.test_rows} test rows` : 'Evaluation artifact'}
+          </span>
+        </div>
+        <p className="panel-caption">
+          Measured offline on a stratified {metrics?.test_rows || '—'}-row holdout of the
+          training set, not computed from live tickets. Baseline = always predict the most
+          frequent category.
+        </p>
+        {metricsLoading ? (
+          <div className="empty-state"><p>Loading evaluation metrics…</p></div>
+        ) : hasMetrics ? (
+          <>
+            <div className="metric-grid">
+              {[
+                { label: 'Accuracy', value: metrics.accuracy },
+                { label: 'Weighted F1', value: metrics.f1_score },
+                { label: 'Weighted Precision', value: metrics.precision },
+                { label: 'Weighted Recall', value: metrics.recall },
+                { label: 'Macro F1', value: metrics.macro_f1 },
+                { label: 'Majority Baseline', value: baseline },
+              ].map(({ label, value }) => (
+                <div className="metric-cell" key={label}>
+                  <span className="metric-cell__label">{label}</span>
+                  <span className="metric-cell__value">{pct(value)}</span>
+                  <span className="metric-bar">
+                    <span className="metric-bar__fill" style={{ width: pct(value) }} />
+                  </span>
+                </div>
+              ))}
+            </div>
+            {delta !== null && (
+              <p className="metric-footnote">
+                Accuracy delta vs majority baseline:{' '}
+                <strong className={delta >= 0 ? 'delta-up' : 'delta-down'}>
+                  {delta >= 0 ? '+' : ''}{(delta * 100).toFixed(1)} pts
+                </strong>
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="empty-state"><p>Evaluation metrics are unavailable.</p></div>
+        )}
+      </section>
 
       <section className="overview-grid">
         <article className="surface-panel category-panel">
@@ -95,7 +156,7 @@ export default function Dashboard({ history, historyLoading, historyError }) {
         </article>
         <article className="surface-panel operator-note">
           <p className="eyebrow">TRIAGE WORKFLOW</p>
-          <div className="operator-note__mark">01<span> / 03</span></div>
+          <div className="operator-note__mark">Workflow</div>
           <h2>Read the signal. Verify the route.</h2>
           <p>The model combines TF-IDF features with Logistic Regression. Urgency comes from sentiment and should guide review, not replace an operator’s judgment.</p>
           <div className="operator-note__footer">

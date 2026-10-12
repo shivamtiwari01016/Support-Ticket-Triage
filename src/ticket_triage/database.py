@@ -1,6 +1,7 @@
 """SQLAlchemy engine, sessions, and database connectivity helpers."""
 
 from collections.abc import Generator
+import logging
 
 from fastapi import Request
 from alembic.config import Config
@@ -10,6 +11,13 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from ticket_triage.config import PROJECT_ROOT
+from ticket_triage.models import Base
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _migration_directory_exists() -> bool:
+    return (PROJECT_ROOT / "migrations").is_dir()
 
 
 def create_database_engine(database_url: str) -> Engine:
@@ -30,15 +38,22 @@ def verify_database(engine: Engine) -> None:
 
 def verify_schema(engine: Engine, *, require_migration_history: bool = True) -> None:
     required_tables = {"tickets", "predictions"}
-    if require_migration_history:
+    migration_dir_exists = _migration_directory_exists()
+
+    if require_migration_history and migration_dir_exists:
         required_tables.add("alembic_version")
+    elif require_migration_history:
+        LOGGER.warning(
+            "Alembic migration directory is missing; skipping migration revision verification."
+        )
+
     missing_tables = required_tables.difference(inspect(engine).get_table_names())
     if missing_tables:
         missing = ", ".join(sorted(missing_tables))
         raise RuntimeError(
             f"Database schema is incomplete (missing: {missing}). Run `alembic upgrade head`."
         )
-    if require_migration_history:
+    if require_migration_history and migration_dir_exists:
         migration_config = Config(str(PROJECT_ROOT / "alembic.ini"))
         expected_revision = ScriptDirectory.from_config(migration_config).get_current_head()
         with engine.connect() as connection:
@@ -53,6 +68,14 @@ def verify_schema(engine: Engine, *, require_migration_history: bool = True) -> 
 
 def upgrade_schema(database_url: str) -> None:
     """Apply checked-in Alembic revisions to the configured database."""
+    if not _migration_directory_exists():
+        engine = create_database_engine(database_url)
+        try:
+            Base.metadata.create_all(engine)
+        finally:
+            engine.dispose()
+        return
+
     from alembic import command
 
     alembic_config = Config(str(PROJECT_ROOT / "alembic.ini"))

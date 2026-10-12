@@ -82,7 +82,7 @@ export default function ModelInfo() {
 
       <section className="model-section metrics-section">
         <div className="section-heading section-heading--inline">
-          <div><p className="eyebrow">HELD-OUT EVALUATION{metrics ? ` · ${metrics.dataset_rows.toLocaleString()} ROWS` : ''}</p><h2>Measured classification metrics</h2></div>
+          <div><p className="eyebrow">HELD-OUT EVALUATION{metrics?.dataset_rows ? ` · ${metrics.dataset_rows.toLocaleString()} ROWS` : ''}</p><h2>Measured classification metrics</h2></div>
           <span className="snapshot-tag">GET /api/v1/metrics</span>
         </div>
         {isLoading ? (
@@ -95,9 +95,9 @@ export default function ModelInfo() {
               <thead><tr><th scope="col">Metric</th><th scope="col">Score</th><th scope="col">Interpretation</th></tr></thead>
               <tbody>
                 {metricRows.map(([label, value]) => (
-                  <tr key={label}><th scope="row">{label}</th><td>{(value * 100).toFixed(1)}%</td><td>Four-way proxy-label holdout</td></tr>
+                  <tr key={label}><th scope="row">{label}</th><td>{Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '—'}</td><td>Four-way proxy-label holdout</td></tr>
                 ))}
-                <tr className="metrics-table__baseline"><th scope="row">Majority accuracy baseline</th><td>{(metrics.majority_baseline_accuracy * 100).toFixed(1)}%</td><td>Predict the largest class for every ticket</td></tr>
+                <tr className="metrics-table__baseline"><th scope="row">Majority accuracy baseline</th><td>{Number.isFinite(metrics?.majority_baseline_accuracy) ? `${(metrics.majority_baseline_accuracy * 100).toFixed(1)}%` : '—'}</td><td>Predict the largest class for every ticket</td></tr>
               </tbody>
             </table>
           </div>

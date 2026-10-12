@@ -1,10 +1,25 @@
 # Support Ticket Triage and Auto-Categorization
 
-An explainable NLP baseline that classifies a support ticket as Billing, Technical Support, Account, or General, then derives a separate urgency score from sentiment. The category model is TF-IDF plus class-weighted Logistic Regression; the API is FastAPI and can be called from a Spring Boot service over JSON.
+An explainable NLP baseline that classifies a support ticket as Billing, Technical Support, Account, or General, then derives a separate urgency score from sentiment. The category model is TF-IDF plus class-weighted Logistic Regression; the API is FastAPI and the frontend is a React dashboard for local demo usage.
+
+## Project overview
+
+This repository demonstrates an end-to-end support ticket triage workflow with:
+
+- a trained NLP classifier for category prediction
+- a VADER-based urgency heuristic
+- a FastAPI backend with persistence in MySQL
+- a React frontend for analyzing tickets and reviewing recent history
+- a model evaluation artifact and supporting project documentation
+
+## Documentation
+
+- [Engineering roadmap](BIG_COMPANY_ROADMAP.md)
+- [UI issues and interview notes](UI_ISSUES_AND_INTERVIEW_POINTS.md)
 
 ## Dataset and EDA
 
-The project uses the Kaggle [Customer Support Ticket Dataset](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset). Put `customer_support_tickets.csv` in `data/raw/`, then open and run [notebooks/01_eda.ipynb](notebooks/01_eda.ipynb). The notebook inspects the real schema, missingness, label distributions, text lengths, sample tickets, and plots.
+The project uses the Kaggle [Customer Support Ticket Dataset](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset). The CSV is stored at `dataset/customer_support_tickets.csv` and is used for model training and evaluation.
 
 The checked CSV export contains 8,469 rows and 17 columns. It has five `Ticket Type` labels, not native support queues. The mapping used here is explicit: Billing inquiry and Refund request become Billing; Technical issue becomes Technical Support; Cancellation request becomes Account; Product inquiry becomes General. This produces counts of Billing 3,386, Technical Support 1,747, Account 1,695, and General 1,641. These are inferred training labels, not ground-truth queue assignments. The supplied `Ticket Priority` is examined in EDA but is not used as a target for the sentiment heuristic.
 
@@ -18,11 +33,18 @@ python -m pip install -e ".[dev]"
 python -m spacy download en_core_web_sm
 ```
 
-Download the Kaggle CSV into `data/raw/` if it is not already present. The CSV and trained model are ignored by Git.
+Create a local environment file from [.env.example](.env.example) and update your database credentials before starting the app.
+
+The training CSV is included in `dataset/`. The trained model artifact is generated locally and ignored by Git.
 
 ## Database Setup
 
 MySQL stores runtime tickets and prediction history only. It does not replace the Kaggle CSV and does not store the trained classifier. The training path remains `CSV -> model artifact`; runtime is `ticket -> FastAPI inference -> MySQL -> response`. The app does not bulk-import the Kaggle rows.
+
+Important security note:
+- default CORS is locked to the local Vite origins
+- protected API routes require an API key by default
+- keep `.env` local and never commit credentials
 
 1. Install and start MySQL 8 or newer.
 2. Create the application database:
@@ -32,7 +54,7 @@ CREATE DATABASE support_ticket_triage CHARACTER SET utf8mb4 COLLATE utf8mb4_0900
 ```
 
 3. Copy `.env.example` to `.env` and set the local MySQL credentials in `DATABASE_URL`. Keep the password out of source control; URL-encode reserved characters in it. `MODEL_DIR` defaults to `models`, `SPACY_MODEL` to `en_core_web_sm`, and `MODEL_VERSION` to `v1`.
-4. Install runtime dependencies with `python -m pip install -r requirements.txt`, or development/notebook dependencies with `python -m pip install -r requirements-dev.txt`.
+4. Install runtime dependencies with `python -m pip install -r requirements.txt`, or development tools with `python -m pip install -e ".[dev]"`.
 5. Train the model if `models/ticket_triage.joblib` is not present. Development startup applies checked-in Alembic revisions automatically. For `ENVIRONMENT=testing` or `production`, run `python -m alembic upgrade head` before starting FastAPI. Startup verifies MySQL, schema revision, model artifact, spaCy and VADER; it fails visibly if a dependency is unavailable and never falls back to SQLite.
 
 Each ticket has an internal auto-incrementing `id` for database relationships and a separate generated `ticket_id` (for example `TKT-...`) for API responses and display. Each inference is a child row in `predictions`, linked by a foreign key, so later re-runs can retain prediction history. One transaction writes the ticket and its first prediction; a failure rolls both back.
@@ -45,19 +67,19 @@ This is a coursework/demo database. Ticket text can contain sensitive customer i
 python -m ticket_triage.train
 ```
 
-Training defaults to `data/raw/customer_support_tickets.csv`, uses an 80/20 stratified train/test split with a fixed random seed, and writes `models/ticket_triage.joblib` plus `models/evaluation.json`. The evaluation includes accuracy, weighted and macro precision/recall/F1, per-category scores, a confusion matrix, and a majority-class baseline. Logistic Regression uses `class_weight="balanced"`; stratification preserves each class's share in both partitions. The EDA shows a moderate Billing majority after the four-way mapping, so both measures are retained.
+Training defaults to `dataset/customer_support_tickets.csv`, uses an 80/20 stratified train/test split with a fixed random seed, and writes `models/ticket_triage.joblib` plus `models/evaluation.json`. The evaluation includes accuracy, weighted and macro precision/recall/F1, per-category scores, a confusion matrix, and a majority-class baseline. Logistic Regression uses `class_weight="balanced"`; stratification preserves each class's share in both partitions.
 
-On this data with `random_state=42`, the measured holdout accuracy is 25.9% and macro F1 is 25.0%, versus a 40.0% majority-class accuracy baseline. The learned text signal is not reliable enough for automatic routing. This is consistent with the export's `Ticket Type` labels being proxies rather than the requested queue labels; use the API as a demonstration only, and replace these proxy labels with human-verified routing outcomes before relying on predictions.
+On this data with `random_state=42`, the measured holdout accuracy is 27.3% and macro F1 is 26.2%, versus a 40.0% majority-class accuracy baseline. The learned text signal is not reliable enough for automatic routing. This is consistent with the export's `Ticket Type` labels being proxies rather than the requested queue labels; use the API as a demonstration only, and replace these proxy labels with human-verified routing outcomes before relying on predictions.
 
 ## Run the API
 
 Start after training:
 
 ```powershell
-python -m uvicorn ticket_triage.api:app --reload
+python -m uvicorn ticket_triage.api:app --host 127.0.0.1 --port 8000
 ```
 
-The API requires the configured MySQL database and trained model. It allows only the local Vite origins listed in `TICKET_TRIAGE_CORS_ORIGINS`. Send `POST /api/v1/predictions`:
+The API requires the configured MySQL database and trained model. It allows only the local Vite origins listed in `TICKET_TRIAGE_CORS_ORIGINS`. Protected routes use an optional demo API key when `TICKET_TRIAGE_API_KEY` is set; in development it is safe to leave unset unless you want a gateway check. Send `POST /api/v1/predictions`:
 
 ```powershell
 $body = @{ text = "I was charged twice and need help resolving this billing issue." } | ConvertTo-Json
@@ -94,7 +116,9 @@ Unversioned `/health`, `/predict`, `/tickets`, `/statistics`, and `/metrics` rou
 
 ## Continuous Integration
 
-Backend CI provisions an isolated MySQL 8 service, applies Alembic migrations, and runs the full test suite including a real MySQL API round-trip. Frontend CI runs `npm ci` and a production Vite build. The optional local MySQL test requires `MYSQL_TEST_DATABASE_URL` to point to a dedicated loopback database whose name ends in `_test`; it is skipped otherwise.
+CI provisions an isolated MySQL 8 service, applies Alembic migrations, runs the backend test suite, and builds the frontend. The optional local MySQL test requires `MYSQL_TEST_DATABASE_URL` to point to a dedicated loopback database whose name ends in `_test`; it is skipped otherwise.
+
+Dependency update checks are configured in [.github/dependabot.yml](.github/dependabot.yml), and local hooks are configured in [.pre-commit-config.yaml](.pre-commit-config.yaml).
 
 ## Pipeline and Design Rationale
 
@@ -127,8 +151,8 @@ Backend CI provisions an isolated MySQL 8 service, applies Alembic migrations, a
 - `tests/test_database.py`, `tests/test_api_persistence.py`: isolated DB/API tests
 - `tests/test_mysql_integration.py`: optional MySQL integration test; runs in backend CI
 - `.github/workflows/`: backend MySQL/test and frontend build CI
-- `scripts/smoke_api.py`: request-level check for the running API
-- `docs/architecture/system.md`: runtime and training data-flow diagrams
-- `docs/database/schema.md`: ER diagram and migration workflow
+- `Makefile`: common setup, training, API, test, lint, and frontend commands
+- `Dockerfile` and `docker-compose.yml`: containerized local API setup
+- `BIG_COMPANY_ROADMAP.md`: planned engineering improvements
 
 Run tests with `python -m pytest`. Because the category labels are inferred from `Ticket Type` and the dataset contains templated examples, evaluation scores describe this dataset and mapping only; they should not be presented as production routing performance. A production system should be trained and evaluated on tickets with human-verified destination queues and urgency outcomes.

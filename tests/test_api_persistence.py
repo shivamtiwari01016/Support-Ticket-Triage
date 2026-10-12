@@ -52,6 +52,7 @@ def client(tmp_path: Path, monkeypatch):
         "score_urgency",
         lambda text: {"score": 84, "level": "High", "sentiment_compound": -0.68},
     )
+    monkeypatch.setattr(api_module, "API_KEY", "test-key")
     monkeypatch.setattr(api_module, "ensure_nlp_ready", lambda: None)
     monkeypatch.setattr(api_module, "ensure_urgency_ready", lambda: None)
     app = create_app(
@@ -61,7 +62,7 @@ def client(tmp_path: Path, monkeypatch):
         classifier=FakeClassifier(),
         session_factory=factory,
     )
-    with TestClient(app) as test_client:
+    with TestClient(app, headers={"X-API-Key": "test-key"}) as test_client:
         yield test_client
     engine.dispose()
 
@@ -70,12 +71,42 @@ def test_health_reports_database_and_model(client):
     response = client.get("/health")
 
     assert response.status_code == 200
+    assert response.headers.get("X-Request-ID")
     assert response.json() == {
         "status": "ok",
         "database": "connected",
         "model": "loaded",
         "nlp": "ready",
     }
+
+
+def test_missing_or_wrong_api_key_is_rejected(monkeypatch, tmp_path):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(api_module, "API_KEY", "test-key")
+    app = create_app(
+        model_path=tmp_path / "unused-model.joblib",
+        evaluation_path=tmp_path / "evaluation.json",
+        database_url=None,
+        classifier=FakeClassifier(),
+        session_factory=factory,
+    )
+
+    with TestClient(app) as no_key:
+        assert no_key.get("/api/v1/tickets").status_code == 401
+
+    with TestClient(app, headers={"X-API-Key": "wrong-key"}) as wrong_key:
+        assert wrong_key.get("/api/v1/tickets").status_code == 401
+
+    with TestClient(app, headers={"X-API-Key": "test-key"}) as good_key:
+        assert good_key.get("/api/v1/health").status_code == 200
+
+    engine.dispose()
 
 
 def test_predict_persists_ticket_and_returns_public_record(client):
@@ -91,6 +122,8 @@ def test_predict_persists_ticket_and_returns_public_record(client):
     assert body["urgency"] == 0.84
     assert body["urgency_level"] == "High"
     assert body["created_at"]
+    assert body["confidence"] is not None
+    assert body["explanation"]["per_class"]["Billing"] >= 0
     assert "id" not in body
 
     assert client.get("/tickets").json() == [body]
@@ -180,6 +213,35 @@ def test_health_marks_database_unavailable(client, monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["detail"]["database"] == "unavailable"
+
+
+def test_ticket_status_can_be_updated(client):
+    created = client.post("/predict", json={"text": "Billing refund question"}).json()
+
+    updated = client.patch(
+        f"/api/v1/tickets/{created['ticket_id']}",
+        json={"status": "in_progress"},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "in_progress"
+    assert client.get(f"/tickets/{created['ticket_id']}").json()["status"] == "in_progress"
+
+
+def test_prediction_requests_are_guarded_by_size_and_rate_limits(client, monkeypatch):
+    monkeypatch.setattr(api_module, "MAX_REQUEST_BYTES", 20)
+    monkeypatch.setattr(api_module, "RATE_LIMIT_PER_MINUTE", 1)
+    api_module.RATE_LIMIT_STATE.clear()
+
+    oversized = client.post("/predict", json={"text": "x" * 100})
+    assert oversized.status_code == 413
+
+    monkeypatch.setattr(api_module, "MAX_REQUEST_BYTES", 1024 * 1024)
+    first = client.post("/predict", json={"text": "few words"})
+    second = client.post("/predict", json={"text": "another request"})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
 
 
 def test_startup_fails_clearly_without_mysql_configuration(monkeypatch):

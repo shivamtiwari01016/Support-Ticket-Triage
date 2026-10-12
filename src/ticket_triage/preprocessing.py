@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 import re
+import unicodedata
 
 import spacy
 
@@ -9,21 +10,22 @@ from ticket_triage.config import SPACY_MODEL
 
 URL_PATTERN = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
 EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
-NON_ASCII_TOKEN_PATTERN = re.compile(r"\S*[^\x00-\x7F]\S*")
-NON_WORD_PATTERN = re.compile(r"[^A-Za-z0-9\s]")
+NON_WORD_PATTERN = re.compile(r"[^A-Za-z0-9\s'-]")
 NUMBER_PATTERN = re.compile(r"\b\d+\b")
 WHITESPACE_PATTERN = re.compile(r"\s+")
 LATIN_TOKEN_PATTERN = re.compile(r"[A-Za-z]+\Z")
 
 
 def clean_text(text: str) -> str:
-    """Strip URLs, emails, non-ASCII artifacts, punctuation, and standalone numbers."""
+    """Normalize punctuation and strip URLs, emails, and non-Latin noise while preserving valid words."""
     cleaned = URL_PATTERN.sub(" ", str(text))
     cleaned = EMAIL_PATTERN.sub(" ", cleaned)
-    cleaned = NON_ASCII_TOKEN_PATTERN.sub(" ", cleaned)
-    cleaned = cleaned.replace("?", " ").replace("=", " ")
+    cleaned = cleaned.replace("’", "'").replace("‘", "'").replace("–", "-").replace("—", "-")
+    cleaned = unicodedata.normalize("NFKD", cleaned)
+    cleaned = "".join(ch for ch in cleaned if not unicodedata.combining(ch))
     cleaned = NON_WORD_PATTERN.sub(" ", cleaned)
     cleaned = NUMBER_PATTERN.sub(" ", cleaned)
+    cleaned = cleaned.replace("' ", " ").replace(" '", " ")
     return WHITESPACE_PATTERN.sub(" ", cleaned).strip()
 
 

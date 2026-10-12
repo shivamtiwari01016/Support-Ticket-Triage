@@ -11,6 +11,7 @@ from ticket_triage.preprocessing import (
     extract_features,
     script_valid_tokens,
 )
+from ticket_triage.train import train_and_evaluate
 from ticket_triage.urgency import score_urgency
 
 
@@ -19,12 +20,19 @@ def test_clean_text_removes_requested_artifacts():
     assert cleaned == "Email me at Bad"
 
 
+def test_clean_text_preserves_valid_apostrophes_and_accents():
+    cleaned = clean_text("I don't like café and résumé issues.")
+    assert "don't" in cleaned.lower()
+    assert "cafe" in cleaned.lower()
+    assert "resume" in cleaned.lower()
+
+
 def test_script_validation_keeps_ascii_latin_tokens():
     assert script_valid_tokens(["account", "café", "123", "登录"]) == ["account"]
 
 
-def test_clean_text_drops_whole_tokens_containing_non_ascii():
-    assert clean_text("My café account is unavailable.") == "My account is unavailable"
+def test_clean_text_does_not_drop_valid_latin_words_with_accents():
+    assert clean_text("My café account is unavailable.") == "My cafe account is unavailable"
 
 
 def test_feature_extraction_adds_lemmatized_noun_phrase():
@@ -89,5 +97,37 @@ def test_classifier_is_class_weighted_logistic_regression():
 def test_negative_sentiment_has_higher_urgency_score():
     negative = score_urgency("This is awful, broken, and completely unacceptable")
     positive = score_urgency("This is excellent, wonderful, and completely resolved")
+    neutral = score_urgency("The meeting is scheduled for tomorrow at 3pm")
+
     assert 0 <= negative["score"] <= 100
     assert negative["score"] > positive["score"]
+    assert neutral["level"] == "Low"
+
+
+def test_training_metrics_include_cv_and_reproducibility_metadata(tmp_path: Path):
+    csv_path = tmp_path / "tickets.csv"
+    rows = [
+        {"Ticket Type": "Billing inquiry", "Ticket Subject": f"Invoice {idx}", "Ticket Description": "Refund needed for duplicate charge"}
+        for idx in range(1, 5)
+    ]
+    rows += [
+        {"Ticket Type": "Technical issue", "Ticket Subject": f"Crash {idx}", "Ticket Description": "Application keeps failing at startup"}
+        for idx in range(1, 5)
+    ]
+    rows += [
+        {"Ticket Type": "Cancellation request", "Ticket Subject": f"Cancel {idx}", "Ticket Description": "Need to cancel account and subscription"}
+        for idx in range(1, 5)
+    ]
+    rows += [
+        {"Ticket Type": "Product inquiry", "Ticket Subject": f"Question {idx}", "Ticket Description": "Need onboarding and pricing details"}
+        for idx in range(1, 5)
+    ]
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    metrics = train_and_evaluate(csv_path, tmp_path / "model.joblib")
+
+    assert "cv_macro_f1_mean" in metrics
+    assert "cv_macro_f1_std" in metrics
+    assert "cv_macro_f1_scores" in metrics
+    assert "git_sha" in metrics
+    assert isinstance(metrics["git_sha"], str)

@@ -20,6 +20,8 @@ def to_ticket_response(ticket: Ticket) -> TicketResponse:
         urgency=float(prediction.urgency_score),
         urgency_level=prediction.urgency_level,
         created_at=ticket.created_at,
+        confidence=None,
+        explanation=None,
     )
 
 
@@ -32,6 +34,10 @@ class TicketService:
 
     def get_by_ticket_id(self, ticket_id: str) -> TicketResponse | None:
         ticket = self.repository.get_by_ticket_id(ticket_id)
+        return to_ticket_response(ticket) if ticket is not None else None
+
+    def update_status(self, ticket_id: str, status: str) -> TicketResponse | None:
+        ticket = self.repository.update_status(ticket_id, status)
         return to_ticket_response(ticket) if ticket is not None else None
 
     def statistics(self) -> StatisticsResponse:

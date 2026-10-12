@@ -18,13 +18,16 @@ def ensure_urgency_ready() -> None:
 def score_urgency(text: str) -> dict[str, float | int | str]:
     """Map VADER compound polarity to a 0-100 urgency score and level.
 
-    Neutral language scores 50. More negative sentiment raises the score; more
-    positive sentiment lowers it. Thresholds are a transparent initial heuristic,
-    not a learned prediction of the dataset's Ticket Priority field.
+    Neutral language stays low; more negative sentiment raises urgency and more
+    positive sentiment lowers it. Thresholds remain a transparent heuristic.
     """
     compound = _analyzer().polarity_scores(str(text))["compound"]
-    score = round((1.0 - compound) * 50)
-    level = "High" if score >= 70 else "Medium" if score >= 45 else "Low"
+    if abs(compound) <= 0.10:
+        score = 20
+    else:
+        score = round((1.0 - compound) * 50)
+    score = max(0, min(100, score))
+    level = "High" if score >= 70 else "Medium" if score >= 35 else "Low"
     return {
         "score": score,
         "level": level,

@@ -64,7 +64,7 @@ export default function TicketAnalyzer({ history, onPrediction, backendStatus })
               <p className="eyebrow">INCOMING TICKET</p>
               <h2>Analyze support ticket</h2>
             </div>
-            <span className="step-chip"><ScanText size={14} aria-hidden="true" /> 01 / INPUT</span>
+            <span className="step-chip"><ScanText size={14} aria-hidden="true" /> Input</span>
           </div>
           <TicketInput
             value={text}
@@ -98,7 +98,6 @@ export default function TicketAnalyzer({ history, onPrediction, backendStatus })
             <PredictionCard prediction={prediction} />
           ) : (
             <div className="result-placeholder">
-              <span className="result-placeholder__number">02</span>
               <p className="eyebrow">PREDICTION</p>
               <h2>Result appears here</h2>
               <p>Category and urgency are displayed only after a valid response from the backend.</p>

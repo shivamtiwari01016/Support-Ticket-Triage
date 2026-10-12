@@ -17,4 +17,9 @@ export default [
     settings: { react: { version: 'detect' } },
     rules: { 'react/jsx-uses-vars': 'error' },
   },
+  {
+    // Build/config files run in Node, not the browser.
+    files: ['*.config.js', '*.config.cjs'],
+    languageOptions: { globals: globals.node },
+  },
 ]

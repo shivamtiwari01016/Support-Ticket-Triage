@@ -1,0 +1,21 @@
+# Lockfile generated for reproducible local setup.
+alembic==1.15.2
+cryptography==45.0.3
+fastapi==0.115.12
+joblib==1.4.2
+pandas==2.2.3
+PyMySQL==1.2.3
+python-dotenv==1.1.0
+pydantic==2.11.7
+scikit-learn==1.6.1
+SQLAlchemy==2.0.41
+spacy==3.8.7
+uvicorn[standard]==0.34.2
+vaderSentiment==3.3.2
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+httpx==0.28.1
+ipykernel==6.29.5
+matplotlib==3.10.1
+pre-commit==4.1.0
+pytest==8.3.5
+ruff==0.9.10

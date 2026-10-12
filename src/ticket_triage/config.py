@@ -22,6 +22,17 @@ MODEL_VERSION = os.getenv("MODEL_VERSION", "v1")
 SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+API_KEY = os.getenv("TICKET_TRIAGE_API_KEY", "").strip()
+RATE_LIMIT_PER_MINUTE = int(os.getenv("TICKET_TRIAGE_RATE_LIMIT_PER_MINUTE", "60"))
+MAX_REQUEST_BYTES = int(os.getenv("TICKET_TRIAGE_MAX_REQUEST_BYTES", str(1024 * 1024)))
+if ENVIRONMENT != "development" and not API_KEY:
+    raise RuntimeError("TICKET_TRIAGE_API_KEY must be set outside development.")
+CORS_ALLOW_ALL = os.getenv("TICKET_TRIAGE_CORS_ALLOW_ALL", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 CORS_ORIGINS = tuple(
     origin.strip()
     for origin in os.getenv(

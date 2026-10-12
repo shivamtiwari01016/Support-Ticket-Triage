@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import AppLayout from './components/layout/AppLayout'
@@ -8,6 +8,34 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const ModelInfo = lazy(() => import('./pages/ModelInfo'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const TicketAnalyzer = lazy(() => import('./pages/TicketAnalyzer'))
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="page">
+          <div className="error-panel" role="alert">
+            <span className="error-panel__icon">!</span>
+            <p className="eyebrow">APPLICATION ERROR</p>
+            <h2>Something went wrong</h2>
+            <p>The dashboard could not be rendered. Please refresh the page and try again.</p>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
 
 function App() {
   const [history, setHistory] = useState([])
@@ -58,28 +86,30 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Suspense fallback={<div className="route-loading" role="status">Loading workspace…</div>}>
-        <Routes>
-          <Route element={<AppLayout status={backendStatus} />}>
-            <Route index element={<Dashboard history={history} historyLoading={historyLoading} historyError={historyError} />} />
-            <Route
-              path="analyze"
-              element={
-                <TicketAnalyzer
-                  history={history}
-                  historyLoading={historyLoading}
-                  historyError={historyError}
-                  onPrediction={handlePrediction}
-                  backendStatus={backendStatus}
-                />
-              }
-            />
-            <Route path="pipeline" element={<Pipeline />} />
-            <Route path="model" element={<ModelInfo />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<div className="route-loading" role="status">Loading workspace…</div>}>
+          <Routes>
+            <Route element={<AppLayout status={backendStatus} />}>
+              <Route index element={<Dashboard history={history} historyLoading={historyLoading} historyError={historyError} />} />
+              <Route
+                path="analyze"
+                element={
+                  <TicketAnalyzer
+                    history={history}
+                    historyLoading={historyLoading}
+                    historyError={historyError}
+                    onPrediction={handlePrediction}
+                    backendStatus={backendStatus}
+                  />
+                }
+              />
+              <Route path="pipeline" element={<Pipeline />} />
+              <Route path="model" element={<ModelInfo />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

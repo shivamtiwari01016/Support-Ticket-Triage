@@ -1,0 +1,41 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: ticket_triage_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: support_ticket_triage
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: ticket_triage_api
+    command: sh -c "python -m alembic upgrade head && uvicorn ticket_triage.api:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: mysql+pymysql://root:root@db:3306/support_ticket_triage
+      TICKET_TRIAGE_API_KEY: demo-key
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: ./frontend
+    container_name: ticket_triage_web
+    ports:
+      - "5173:80"
+    depends_on:
+      - api

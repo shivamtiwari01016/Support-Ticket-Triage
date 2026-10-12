@@ -76,6 +76,17 @@ def test_initial_alembic_migration_creates_expected_tables(tmp_path):
         engine.dispose()
 
 
+def test_verify_schema_skips_migration_history_when_migrations_directory_is_missing(monkeypatch, tmp_path):
+    engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr("ticket_triage.database.PROJECT_ROOT", tmp_path)
+
+    try:
+        verify_schema(engine, require_migration_history=True)
+    finally:
+        engine.dispose()
+
+
 def test_ticket_prediction_relationship_and_retrieval(database):
     engine, session = database
     verify_database(engine)
