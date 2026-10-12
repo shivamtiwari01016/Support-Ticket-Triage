@@ -20,4 +20,4 @@ ipykernel==6.29.5
 matplotlib==3.10.1
 pre-commit==4.1.0
 pytest==8.3.5
-ruff==0.9.10
+ruff==0.16.10
